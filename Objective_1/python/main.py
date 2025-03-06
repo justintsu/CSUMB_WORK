@@ -34,6 +34,7 @@ def main():
     # Import CSV format data using pandas read_csv function
     df = pd.read_csv(f_input)
 
+    shell()
     # Drop the garbage unnamed column
     df.drop([df.columns[0]], axis=1, inplace=True)
 
@@ -54,6 +55,8 @@ def main():
 
     # Determine which treatments to loop through based on user specs
     # If '-t' was not supplied, use all
+    shell()
+    sys.exit()
     if args.t:
         treatments = args.t
     else:
@@ -98,7 +101,7 @@ def main():
                   '{2} - {3}\n' \
                   '_______________________________ \n' \
                   'Cumulative Flux: {0} \n' \
-                  'Cumulative Error: {1}\n\n\n'.format(cumulative_flux, cumulative_flux_se, start, end, site, treatment))
+                  'Standard Error: {1}\n\n\n'.format(cumulative_flux, cumulative_flux_se, start, end, site, treatment))
 
             # Plotting stuff
             site_labels[treatment].append(f'{site}\n{start} - {end}')
