@@ -3,6 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 
+from IPython import embed as shell
+import sys
+
 # Define a function to calculate cumulative stats
 def accum_data(df,typ='Mean_flux'):
     # Requires a dataframe containing N2O data in ascending order
@@ -15,7 +18,7 @@ def accum_data(df,typ='Mean_flux'):
     # (D_a + D_b)
     flux_sum = df[typ].rolling(window=2).sum().dropna().values
 
-    return np.sum([0.5*f*t for f,t in zip(flux_sum, time_diff)])
+    return [0.5*f*t for f,t in zip(flux_sum, time_diff)]
 
 def main():
     parser = argparse.ArgumentParser(description="A plotting script that takes in a CSV file with site, treatment and flux data.")
@@ -78,26 +81,29 @@ def main():
             # Check to see if site is in the dataframe, if not then skip loop iteration
             if site not in df['Site'].unique(): continue
             data = df[(df['Treatment'] == treatment) & (df['Site'] == site)].sort_index(ascending=True)
-            cumulative_flux = accum_data(data, 'Mean_flux')
-            # Convert flux from mg/m2 to kg/hectare
-            cumulative_flux = cumulative_flux *  1.e4 / 1.e6
+            cumulative_fluxes = accum_data(data, 'Mean_flux')
+            # Convert fluxes from mg/m2 to kg/hectare
+            cumulative_fluxes = [cumulative_flux *  (1.e4 / 1.e6) for cumulative_flux in cumulative_fluxes]
 
-            cumulative_se   = accum_data(data, 'se')
-            # Convert se from mg/m2 to kg/hectare
-            cumulative_se   = cumulative_se * 1.e4 / 1.e6
+            # Add up all fluxes to get total flux
+            cumulative_flux = np.sum(cumulative_fluxes)
 
+            # Compute standard deviation of cumulative fluxes
+            cumulative_flux_se = np.std(cumulative_fluxes) / np.sqrt(len(cumulative_fluxes))
+            #
+            
             start = data.index.min().strftime('%m/%d/%Y')
             end = data.index.max().strftime('%m/%d/%Y')
             print('Site {4}, Treatment {5}:\n' \
                   '{2} - {3}\n' \
                   '_______________________________ \n' \
                   'Cumulative Flux: {0} \n' \
-                  'Cumulative Error: {1}\n\n\n'.format(cumulative_flux, cumulative_se, start, end, site, treatment))
+                  'Cumulative Error: {1}\n\n\n'.format(cumulative_flux, cumulative_flux_se, start, end, site, treatment))
 
             # Plotting stuff
             site_labels[treatment].append(f'{site}\n{start} - {end}')
             flux_values[treatment].append(cumulative_flux)
-            err_values[treatment].append(cumulative_se)
+            err_values[treatment].append(cumulative_flux_se)
 
     # Bar positions
     num_treatments = len(site_labels.keys())
