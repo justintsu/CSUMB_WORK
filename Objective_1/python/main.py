@@ -27,8 +27,14 @@ def main():
     parser.add_argument("-f", type=str, required=True, help="Pathway to CSV Data File")
     parser.add_argument("-s", type=str, nargs="+", required=False, help="User Specified Sites to Plot (All by Default)")
     parser.add_argument("-t", type=str, nargs="+", required=False, help="User Specified Treatments to Plot (All by Default)")
+    parser.add_argument("-o", action="store_true", required=False, default=False, help="Boolean to control cumulative flux CSV output (False by Default)")
 
     args = parser.parse_args()
+    if args.o:
+        print_csv = args.o
+    else:
+        print_csv = False
+
     # Specify CSV format input data file
     f_input = args.f
 
@@ -66,6 +72,7 @@ def main():
         treatments = df.Treatment.unique()
 
     # Loop through Treatment Types
+    printout_list = []
     for treatment in treatments:
         #Check to see if treatment is in the dataframe, if not then skip loop iteration
         if treatment not in df['Treatment'].unique(): continue
@@ -95,22 +102,32 @@ def main():
             cumulative_flux = np.sum(cumulative_fluxes)
 
             # Compute standard deviation of cumulative fluxes
-            cumulative_flux_se = np.std(cumulative_fluxes) / np.sqrt(len(cumulative_fluxes))
+            cumulative_flux_se = np.std(cumulative_fluxes, ddof=1) / np.sqrt(len(cumulative_fluxes))
             #
-            
+        
             start = data.index.min().strftime('%m/%d/%Y')
             end = data.index.max().strftime('%m/%d/%Y')
-            print('Site {4}, Treatment {5}:\n' \
-                  '{2} - {3}\n' \
-                  '_______________________________ \n' \
-                  'Cumulative Flux: {0} \n' \
-                  'Standard Error: {1}\n\n\n'.format(cumulative_flux, cumulative_flux_se, start, end, site, treatment))
-
+            if not print_csv:
+                #If we aren't writing a file, then print to screen
+                print('Site {4}, Treatment {5}:\n' \
+                      '{2} - {3}\n' \
+                      '_______________________________ \n' \
+                      'Cumulative Flux: {0} \n' \
+                      'Standard Error: {1}\n\n\n'.format(cumulative_flux, cumulative_flux_se, start, end, site, treatment))
+            else:
+                printout_list.append([treatment, site, cumulative_flux, cumulative_flux_se])
             # Plotting stuff
             site_labels[treatment].append(f'{site}\n{start} - {end}')
             flux_values[treatment].append(cumulative_flux)
             err_values[treatment].append(cumulative_flux_se)
 
+    #Create csv dataframe and export
+    if print_csv:
+        df_print = pd.DataFrame(printout_list)
+        start = df.index.min().strftime('%Y%m%d')
+        end = df.index.max().strftime('%Y%m%d')
+        df_print.rename(columns={0:"Treatment", 1:"Site", 2:"Cumulative Flux", 3:"SE"}, inplace=True)
+        df_print.to_csv(f'flux_and_err_{start}_{end}.csv', index=False)
     # Reorganize data
     num_treatments = len(site_labels.keys())
     treatment_indices = np.arange(num_treatments)
