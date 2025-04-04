@@ -27,10 +27,13 @@ def main():
     parser.add_argument("-f", type=str, required=True, help="Pathway to CSV Data File")
     parser.add_argument("-s", type=str, nargs="+", required=False, help="User Specified Sites to Plot (All by Default)")
     parser.add_argument("-t", type=str, nargs="+", required=False, help="User Specified Treatments to Plot (All by Default)")
+    parser.add_argument("-b", type=str, nargs="+", required=False, help="User Specified Start Date YYYYMMDD (Use Earliest Date by Default)")
+    parser.add_argument("-e", type=str, nargs="+", required=False, help="User Specified End Date YYYYMMDD (Use Latest Date by Default)")
 
     args = parser.parse_args()
     # Specify CSV format input data file
     f_input = args.f
+
 
     # Import CSV format data using pandas read_csv function
     df = pd.read_csv(f_input)
@@ -55,6 +58,31 @@ def main():
     # Isolate only the nitrous oxide species data
     df = df[df['Species'] == 'N2O']
 
+    # Check formatting of date inputs and use the ranges to edit the dataframe
+    if args.b:
+        if len(args.b[0]) != 8: 
+            print('INPUT ERROR: Incorrect Start Date Format, must be YYYYMMDD')
+            sys.exit()
+        bdtg = pd.to_datetime(args.b[0])
+        df = df[df.index >= bdtg]
+
+    if args.e:
+        if len(args.e[0]) != 8: 
+            print('INPUT ERROR: Incorrect End Date Format, must be YYYYMMDD')
+            sys.exit()
+        edtg = pd.to_datetime(args.e[0])
+        df = df[df.index <= edtg]
+
+    # Check if edtg is after bdtg
+    if args.b and args.e:
+      if edtg <= bdtg:
+          print('INPUT ERROR: End date must be greater than start date')
+          sys.exit()
+
+    # Check if the dataframe is empty, if it is, then sys exit and notify user 
+    if df.empty:
+        print(f'No data from {f_input} matches provided date range')
+        sys.exit()
 
     site_labels, flux_values, err_values = {}, {}, {}
 
