@@ -15,11 +15,17 @@ def accum_data(df,typ='Mean_flux'):
     #  C = 0.5 * (D_a + D_b) * (B - A)
     # (B-A)
     time_diff = [-td/np.timedelta64(1,'D') for td in df.index.diff(periods=-1).dropna()]
-
+    
     # (D_a + D_b)
     flux_sum = df[typ].rolling(window=2).sum().dropna().values
 
-    return [0.5*f*t for f,t in zip(flux_sum, time_diff)]
+    # Print out range of dates over which daily flux was averaged
+    date_ranges = []
+    for i,date in enumerate(df.index[:-1]):
+      date_ranges.append('{0}-{1}'.format(df.index[i].strftime('%m/%d/%Y'), df.index[i+1].strftime('%m/%d/%Y')))
+
+
+    return [0.5*f*t for f,t in zip(flux_sum, time_diff)], date_ranges
 
 def main():
     parser = argparse.ArgumentParser(description="A plotting script that takes in a CSV file with site, treatment and flux data.")
@@ -27,10 +33,15 @@ def main():
     parser.add_argument("-f", type=str, required=True, help="Pathway to CSV Data File")
     parser.add_argument("-s", type=str, nargs="+", required=False, help="User Specified Sites to Plot (All by Default)")
     parser.add_argument("-t", type=str, nargs="+", required=False, help="User Specified Treatments to Plot (All by Default)")
+    parser.add_argument("-o", action="store_true", required=False, default=False, help="Boolean to control cumulative flux CSV output (False by Default)")
     parser.add_argument("-b", type=str, nargs="+", required=False, help="User Specified Start Date YYYYMMDD (Use Earliest Date by Default)")
     parser.add_argument("-e", type=str, nargs="+", required=False, help="User Specified End Date YYYYMMDD (Use Latest Date by Default)")
-
     args = parser.parse_args()
+    if args.o:
+        print_csv = args.o
+    else:
+        print_csv = False
+
     # Specify CSV format input data file
     f_input = args.f
 
@@ -94,6 +105,7 @@ def main():
         treatments = df.Treatment.unique()
 
     # Loop through Treatment Types
+    printout_list1, printout_list2 = [], []
     for treatment in treatments:
         #Check to see if treatment is in the dataframe, if not then skip loop iteration
         if treatment not in df['Treatment'].unique(): continue
@@ -115,7 +127,7 @@ def main():
             # Check to see if site is in the dataframe, if not then skip loop iteration
             if site not in df['Site'].unique(): continue
             data = df[(df['Treatment'] == treatment) & (df['Site'] == site)].sort_index(ascending=True)
-            cumulative_fluxes = accum_data(data, 'Mean_flux')
+            cumulative_fluxes, date_ranges = accum_data(data, 'Mean_flux')
             # Convert fluxes from mg/m2 to kg/hectare
             cumulative_fluxes = [cumulative_flux *  (1.e4 / 1.e6) for cumulative_flux in cumulative_fluxes]
 
@@ -123,22 +135,38 @@ def main():
             cumulative_flux = np.sum(cumulative_fluxes)
 
             # Compute standard deviation of cumulative fluxes
-            cumulative_flux_se = np.std(cumulative_fluxes) / np.sqrt(len(cumulative_fluxes))
+            cumulative_flux_se = np.std(cumulative_fluxes, ddof=1) / np.sqrt(len(cumulative_fluxes))
             #
-            
             start = data.index.min().strftime('%m/%d/%Y')
             end = data.index.max().strftime('%m/%d/%Y')
-            print('Site {4}, Treatment {5}:\n' \
-                  '{2} - {3}\n' \
-                  '_______________________________ \n' \
-                  'Cumulative Flux: {0} \n' \
-                  'Standard Error: {1}\n\n\n'.format(cumulative_flux, cumulative_flux_se, start, end, site, treatment))
-
+            if not print_csv:
+                #If we aren't writing a file, then print to screen
+                print('Site {4}, Treatment {5}:\n' \
+                      '{2} - {3}\n' \
+                      '_______________________________ \n' \
+                      'Cumulative Flux: {0} \n' \
+                      'Standard Error: {1}\n\n\n'.format(cumulative_flux, cumulative_flux_se, start, end, site, treatment))
+            else:
+                rep_unit = 'kg/Ha'
+                printout_list1.append(['{0}-{1}'.format(start,end), site, treatment, rep_unit, cumulative_flux, cumulative_flux_se])
+                for date_range, cum_flux in zip(date_ranges, cumulative_fluxes):
+                   printout_list2.append([date_range, site, treatment, rep_unit, cum_flux])
             # Plotting stuff
             site_labels[treatment].append(f'{site}\n{start} - {end}')
             flux_values[treatment].append(cumulative_flux)
             err_values[treatment].append(cumulative_flux_se)
 
+    #Create csv dataframe and export
+    if print_csv:
+        #Create Cumulative Flux CSV
+        df_print = pd.DataFrame(printout_list1)
+        df_print.rename(columns={0:"Dates", 1:"Site", 2:"Treatment", 3: "Reporting Units", 4:"Cumulative Flux", 5:"SE"}, inplace=True)
+        df_print.to_csv(f'cumulative_flux.csv', index=False)
+
+        #Create Daily Flux CSV
+        df_print = pd.DataFrame(printout_list2)
+        df_print.rename(columns={0:"Dates", 1:"Site", 2:"Treatment", 3: "Reporting Units", 4:"Average Daily Flux"}, inplace=True)
+        df_print.to_csv(f'daily_flux.csv', index=False)
     # Reorganize data
     num_treatments = len(site_labels.keys())
     treatment_indices = np.arange(num_treatments)
